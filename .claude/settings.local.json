@@ -4,7 +4,8 @@
       "Bash(python3 -c \"import cv2; print\\(cv2.__version__\\)\")",
       "Bash(python3 -c \"import mss; print\\(mss.__version__\\)\")",
       "Bash(python3 -c \"import pydirectinput\")",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(sips:*)"
     ]
   }
 }

@@ -80,9 +80,14 @@ class Config:
         default_factory=lambda: ["对话", "交互", "调查", "Talk", "Interact"]
     )
 
-    # Photo mode
-    photo_mode_toggle_key: str = "["
-    photo_mode_enter_delay: float = 1.0
+    # Photo mode — multi-step click sequence
+    # Flow: ESC → click camera icon → click eye (hide UI) → click flip (1st person)
+    # All positions are SCREEN coordinates (fullscreen = game coordinates).
+    # Use  python main.py --calibrate  to find exact positions on your setup.
+    photo_esc_menu_camera_pos: list[int] = field(default_factory=lambda: [2900, 980])
+    photo_hide_ui_pos: list[int] = field(default_factory=lambda: [2630, 1630])
+    photo_first_person_pos: list[int] = field(default_factory=lambda: [2840, 1630])
+    photo_step_delay: float = 0.8   # wait between each click step
     photo_mode_exit_delay: float = 1.0
 
     # Probe
@@ -456,9 +461,21 @@ class GameController:
     def mouse_move_relative(self, dx: int, dy: int = 0) -> None:
         pydirectinput.moveRel(dx, dy, relative=True)
 
+    def click_at(self, x: int, y: int) -> None:
+        """Click at absolute screen coordinates."""
+        pydirectinput.click(x, y)
+
+    def mouse_down(self) -> None:
+        """Press and hold left mouse button (for drag operations)."""
+        pydirectinput.mouseDown(button="left")
+
+    def mouse_up(self) -> None:
+        """Release left mouse button."""
+        pydirectinput.mouseUp(button="left")
+
     # ------------------------------------------------------------------
-    # Smooth camera rotation — called in a blocking manner but the caller
-    # is responsible for interleaving frame captures.
+    # Smooth camera rotation — holds left mouse button while dragging,
+    # because HSR photo mode requires click-drag for camera rotation.
     # ------------------------------------------------------------------
     def smooth_mouse_rotate(
         self,
@@ -468,6 +485,7 @@ class GameController:
     ) -> None:
         """Rotate camera by *total_dx* pixels over *duration* seconds.
 
+        Holds left mouse button during the drag (required by HSR photo mode).
         If *capture_fn* is provided it is called every ~frame_interval to keep
         recording video during the rotation.
         """
@@ -477,22 +495,50 @@ class GameController:
         frame_interval = 1.0 / self._cfg.fps if self._cfg.fps > 0 else 0.066
         last_capture = time.perf_counter()
 
-        for _ in range(steps):
-            pydirectinput.moveRel(int(dx_per), 0, relative=True)
-            now = time.perf_counter()
-            if capture_fn and (now - last_capture) >= frame_interval:
-                capture_fn()
-                last_capture = time.perf_counter()
-            remaining = sleep_per - (time.perf_counter() - now)
-            if remaining > 0:
-                time.sleep(remaining)
+        self.mouse_down()
+        try:
+            for _ in range(steps):
+                pydirectinput.moveRel(int(dx_per), 0, relative=True)
+                now = time.perf_counter()
+                if capture_fn and (now - last_capture) >= frame_interval:
+                    capture_fn()
+                    last_capture = time.perf_counter()
+                remaining = sleep_per - (time.perf_counter() - now)
+                if remaining > 0:
+                    time.sleep(remaining)
+        finally:
+            self.mouse_up()
 
     def enter_photo_mode(self) -> None:
-        self.tap_key(self._cfg.photo_mode_toggle_key)
-        time.sleep(self._cfg.photo_mode_enter_delay)
+        """Multi-step: ESC → click camera → click eye (hide UI) → click flip (1st person)."""
+        delay = self._cfg.photo_step_delay
+
+        # 1. ESC to open menu
+        self.tap_key("escape")
+        time.sleep(delay)
+
+        # 2. Click camera icon in ESC menu right sidebar
+        pos = self._cfg.photo_esc_menu_camera_pos
+        self.click_at(pos[0], pos[1])
+        time.sleep(delay)
+
+        # 3. Click eye icon to hide UI
+        pos = self._cfg.photo_hide_ui_pos
+        self.click_at(pos[0], pos[1])
+        time.sleep(0.3)
+
+        # 4. Click camera-flip icon for first-person view
+        pos = self._cfg.photo_first_person_pos
+        self.click_at(pos[0], pos[1])
+        time.sleep(0.3)
 
     def exit_photo_mode(self) -> None:
-        self.tap_key(self._cfg.photo_mode_toggle_key)
+        """Two ESC presses: 1st exits first-person/no-UI → photo UI, 2nd exits photo mode → gameplay."""
+        # 1st ESC: exit first-person no-UI back to photo mode with UI
+        self.tap_key("escape")
+        time.sleep(self._cfg.photo_step_delay)
+        # 2nd ESC: exit photo mode back to gameplay
+        self.tap_key("escape")
         time.sleep(self._cfg.photo_mode_exit_delay)
 
 
@@ -603,7 +649,7 @@ class StateMachine:
         self._ctrl.enter_photo_mode()
         self._in_photo_mode = True
         self._actions.log("enter_photo_mode", t, self._elapsed(),
-                          {"key": self._cfg.photo_mode_toggle_key})
+                          {"method": "click_sequence"})
         self._state = State.RANDOM_MOVEMENT
 
     def _do_random_movement(self) -> None:
@@ -733,7 +779,7 @@ class StateMachine:
         self._ctrl.enter_photo_mode()
         self._in_photo_mode = True
         self._actions.log("enter_photo_mode", t, self._elapsed(),
-                          {"key": self._cfg.photo_mode_toggle_key}, note="probe end")
+                          {"method": "click_sequence"}, note="probe end")
 
         self._last_probe = self._elapsed()
         self._state = State.RANDOM_MOVEMENT
@@ -870,6 +916,81 @@ class DataCollector:
 # 9. Entry point
 # ===================================================================
 
+def run_calibrate(config_path: str) -> None:
+    """Interactive multi-round screenshot calibration tool.
+
+    Flow:
+      1. Prompts you in the terminal (not in the game)
+      2. You switch to the game and prepare the screen you want to capture
+      3. Press Enter in the terminal → 3-second countdown → screenshot
+      4. Screenshot saved as PNG → open it in any image viewer (e.g. Paint)
+         to read pixel coordinates
+      5. Repeat for as many screens as you need (ESC menu, photo mode, etc.)
+
+    No OpenCV window needed — just use your image viewer to get coordinates.
+    """
+    cfg = Config.from_json(config_path)
+    import mss as _mss
+
+    sct = _mss.mss()
+    monitor = sct.monitors[cfg.monitor_index]
+    w, h = monitor["width"], monitor["height"]
+
+    out_path = pathlib.Path(cfg.output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    print("=" * 60)
+    print(f"  HSR Calibration Tool — Monitor {cfg.monitor_index}: {w}x{h}")
+    print("=" * 60)
+    print()
+    print("How it works:")
+    print("  1. Switch to the game, prepare the screen you want")
+    print("  2. Come back here and press Enter")
+    print("  3. 3-second countdown → screenshot captured")
+    print("  4. Open the saved PNG in Paint / image viewer")
+    print("     → hover over UI elements to read their coordinates")
+    print("  5. Put those coordinates into config.json")
+    print()
+    print("You need coordinates for:")
+    print("  (a) ESC menu → camera icon position")
+    print("  (b) Photo mode → eye (hide UI) button position")
+    print("  (c) Photo mode → camera-flip (1st person) button position")
+    print("  (d) Gameplay → F interaction prompt area (for ROI)")
+    print()
+
+    round_num = 0
+    while True:
+        round_num += 1
+        ans = input(f"[Round {round_num}] Press Enter to capture (or 'q' to quit): ").strip()
+        if ans.lower() == "q":
+            break
+
+        print("  Capturing in 3 seconds — switch to the game NOW!")
+        for i in range(3, 0, -1):
+            print(f"    {i}...")
+            time.sleep(1)
+
+        img = sct.grab(monitor)
+        frame = np.array(img, dtype=np.uint8)[:, :, :3]
+
+        filename = f"calibrate_{round_num}.png"
+        save_path = out_path / filename
+        cv2.imwrite(str(save_path), frame)
+        print(f"  Saved → {save_path}")
+        print(f"  Open this file in Paint (or any viewer) and note the pixel coordinates.")
+        print()
+
+    sct.close()
+
+    print()
+    print("Done. Update config.json with the coordinates you found:")
+    print('  "photo_esc_menu_camera_pos": [x, y],')
+    print('  "photo_hide_ui_pos": [x, y],')
+    print('  "photo_first_person_pos": [x, y],')
+    print('  "roi_x": ..., "roi_y": ..., "roi_w": ..., "roi_h": ...')
+    print()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Honkai: Star Rail — World Model Training Data Collector"
@@ -879,11 +1000,20 @@ def main() -> None:
         default="config.json",
         help="Path to config JSON (default: config.json)",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Capture a screenshot and click to find UI element coordinates",
+    )
     args = parser.parse_args()
 
     if not _IS_WINDOWS:
         log.error("This script requires Windows (pydirectinput / mss / keyboard).")
         sys.exit(1)
+
+    if args.calibrate:
+        run_calibrate(args.config)
+        return
 
     cfg = Config.from_json(args.config)
     log.info("Game: %s | Duration: %ds | FPS: %d", cfg.game_name, int(cfg.duration_sec), cfg.fps)

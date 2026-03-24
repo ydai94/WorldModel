@@ -65,18 +65,47 @@ The ROI (Region of Interest) is the screen area where the interaction prompt app
    - `roi_x`, `roi_y`: top-left corner of the ROI
    - `roi_w`, `roi_h`: width and height
 
-For 1920×1080 resolution, the interaction prompt in HSR typically appears near the center-right of the screen. A good starting point:
+Use the calibration tool to find exact coordinates (recommended):
+```bash
+python main.py --calibrate
+```
+This captures a screenshot, opens it in a window, and prints the coordinates of each click. Use those values to set `roi_x`, `roi_y` etc. in `config.json`.
+
+For 3024×1716 fullscreen, a good starting point:
 ```json
-"roi_x": 880, "roi_y": 480, "roi_w": 200, "roi_h": 120
+"roi_x": 1500, "roi_y": 850, "roi_w": 400, "roi_h": 250
 ```
 
-## Configuring Photo Mode Toggle Key
+## Configuring Photo Mode (Important)
 
-Honkai: Star Rail's photo mode / camera mode key may vary. Check your in-game key bindings.
+HSR does **not** have a single hotkey for photo mode. Entry requires a multi-step click sequence:
 
-- Default in config: `"photo_mode_toggle_key": "["` (left bracket)
-- If your game uses a different key, update this in `config.json`
-- The same key is used to both enter and exit photo mode
+1. **ESC** → opens game menu
+2. **Click camera icon** on the right sidebar of the ESC menu
+3. **Click eye icon** (hide UI) at the bottom-right of photo mode
+4. **Click camera-flip icon** (first-person view) at the bottom-right
+
+The script automates this by clicking at configured screen coordinates. **You must calibrate these positions for your resolution.**
+
+### How to calibrate
+
+1. Open the game in **fullscreen** mode
+2. Press ESC to open the menu
+3. Run the calibration tool:
+   ```bash
+   python main.py --calibrate
+   ```
+4. In the screenshot window, click on:
+   - The **camera icon** in the ESC menu right sidebar → note the coordinates
+   - Then take another screenshot in photo mode and click on the **eye icon** and **flip icon**
+5. Update `config.json`:
+   ```json
+   "photo_esc_menu_camera_pos": [x1, y1],
+   "photo_hide_ui_pos": [x2, y2],
+   "photo_first_person_pos": [x3, y3]
+   ```
+
+Exit is always ESC (returns from photo mode to gameplay).
 
 ## Configuration Reference
 
@@ -86,7 +115,10 @@ See `config.json` for all fields. Key parameters:
 |-------|-------------|---------|
 | `duration_sec` | Recording duration in seconds | 600 |
 | `fps` | Frames per second for video capture | 15 |
-| `photo_mode_toggle_key` | Key to toggle photo/camera mode | `[` |
+| `photo_esc_menu_camera_pos` | Camera icon position in ESC menu | `[2900, 980]` |
+| `photo_hide_ui_pos` | Eye/hide-UI button in photo mode | `[2630, 1630]` |
+| `photo_first_person_pos` | Camera-flip button in photo mode | `[2840, 1630]` |
+| `photo_step_delay` | Delay between photo mode click steps | 0.8 |
 | `probe_interval_sec` | Seconds between interaction probes | 30 |
 | `scan_candidates` | Camera observation types | `["right_90","left_90","back_180","hold","full_360"]` |
 | `scan_weights` | Probability weights for each observation type | `[0.35, 0.20, 0.25, 0.15, 0.05]` |
