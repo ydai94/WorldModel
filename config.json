@@ -1,7 +1,6 @@
 {
     "game_name": "HonkaiStarRail",
     "duration_sec": 60,
-    "fps": 15,
     "output_dir": "outputs",
     "monitor_index": 1,
 
@@ -46,5 +45,9 @@
     "hotkey_stop": "F8",
     "hotkey_pause": "F9",
 
-    "countdown_sec": 5
+    "countdown_sec": 5,
+
+    "sync_marker_shakes": 3,
+    "sync_marker_dx": 300,
+    "sync_marker_interval": 0.3
 }
