@@ -16,9 +16,9 @@
     "enable_ocr": false,
     "ocr_keywords": ["对话", "交互", "调查", "Talk", "Interact"],
 
-    "photo_esc_menu_camera_pos": [2900, 980],
-    "photo_hide_ui_pos": [2630, 1630],
-    "photo_first_person_pos": [2840, 1630],
+    "photo_esc_menu_camera_pos": [2936, 914],
+    "photo_hide_ui_pos": [2676, 1580],
+    "photo_first_person_pos": [2472, 1572],
     "photo_step_delay": 0.8,
     "photo_mode_exit_delay": 1.0,
 
