@@ -498,9 +498,9 @@ class GameController:
         self.click_at(pos[0], pos[1])
         time.sleep(1.0)  # wait for UI to fade
 
-        # 5. Click screen center to restore keyboard focus to game
+        # 5. Move mouse to screen center (NO click — clicking would toggle UI back)
         cx, cy = self._screen_center()
-        self.click_at(cx, cy)
+        pydirectinput.moveTo(cx, cy)
         time.sleep(0.3)
         log.info("  Photo mode ready.")
 
