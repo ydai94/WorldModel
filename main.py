@@ -36,6 +36,15 @@ import numpy as np
 _IS_WINDOWS = sys.platform == "win32"
 
 if _IS_WINDOWS:
+    import ctypes
+    # Make process DPI-aware so pixel coordinates match physical screen pixels.
+    # Without this, on high-DPI displays (e.g. 200% scaling), click coordinates
+    # are interpreted as logical pixels and land in the wrong place.
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        ctypes.windll.user32.SetProcessDPIAware()  # fallback for older Windows
+
     import mss
     import pydirectinput
     import keyboard
@@ -449,19 +458,42 @@ class GameController:
         finally:
             self.mouse_up()
 
+    def _screen_center(self) -> tuple[int, int]:
+        """Approximate screen center for restoring keyboard focus."""
+        # Use mss to get monitor geometry
+        sct = mss.mss()
+        mon = sct.monitors[self._cfg.monitor_index]
+        cx = mon["left"] + mon["width"] // 2
+        cy = mon["top"] + mon["height"] // 2
+        sct.close()
+        return cx, cy
+
     def enter_photo_mode(self) -> None:
-        """Multi-step: ESC → click camera → click eye (hide UI) → click flip (1st person)."""
+        """Multi-step: ESC → click camera → wait → click eye → click flip → click center."""
         delay = self._cfg.photo_step_delay
+
+        # 1. ESC to open menu
         self.tap_key("escape")
         time.sleep(delay)
+
+        # 2. Click camera icon in ESC menu
         pos = self._cfg.photo_esc_menu_camera_pos
         self.click_at(pos[0], pos[1])
-        time.sleep(delay)
+        time.sleep(delay * 1.5)  # photo mode needs more time to load
+
+        # 3. Click eye icon to hide UI
         pos = self._cfg.photo_hide_ui_pos
         self.click_at(pos[0], pos[1])
-        time.sleep(0.3)
+        time.sleep(0.5)
+
+        # 4. Click camera-flip icon for first-person view
         pos = self._cfg.photo_first_person_pos
         self.click_at(pos[0], pos[1])
+        time.sleep(0.5)
+
+        # 5. Click screen center to restore keyboard focus to game
+        cx, cy = self._screen_center()
+        self.click_at(cx, cy)
         time.sleep(0.3)
 
     def exit_photo_mode(self) -> None:
