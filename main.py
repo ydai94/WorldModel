@@ -434,8 +434,12 @@ class GameController:
         pydirectinput.keyUp(key)
 
     def click_at(self, x: int, y: int) -> None:
-        """Click at absolute screen coordinates."""
-        pydirectinput.click(x, y)
+        """Click at absolute screen coordinates with a deliberate press-hold-release."""
+        pydirectinput.moveTo(x, y)
+        time.sleep(0.05)
+        pydirectinput.mouseDown(button="left")
+        time.sleep(0.08)  # hold briefly — too-fast clicks can be ignored by game UI
+        pydirectinput.mouseUp(button="left")
 
     def mouse_down(self) -> None:
         pydirectinput.mouseDown(button="left")
@@ -469,7 +473,7 @@ class GameController:
         return cx, cy
 
     def enter_photo_mode(self) -> None:
-        """Multi-step: ESC → click camera → wait → click eye → click flip → click center."""
+        """Multi-step: ESC → click camera → long wait → click flip → click eye → click center."""
         delay = self._cfg.photo_step_delay
 
         # 1. ESC to open menu
@@ -478,23 +482,27 @@ class GameController:
 
         # 2. Click camera icon in ESC menu
         pos = self._cfg.photo_esc_menu_camera_pos
+        log.info("  Clicking camera icon at %s …", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(delay * 1.5)  # photo mode needs more time to load
+        time.sleep(2.0)  # photo mode load animation takes ~1-2s
 
-        # 3. Click eye icon to hide UI
-        pos = self._cfg.photo_hide_ui_pos
-        self.click_at(pos[0], pos[1])
-        time.sleep(0.5)
-
-        # 4. Click camera-flip icon for first-person view
+        # 3. Click camera-flip icon for first-person view (do this FIRST)
         pos = self._cfg.photo_first_person_pos
+        log.info("  Clicking first-person at %s …", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(0.5)
+        time.sleep(1.0)  # wait for view transition
+
+        # 4. Click eye icon to hide UI
+        pos = self._cfg.photo_hide_ui_pos
+        log.info("  Clicking hide-UI at %s …", pos)
+        self.click_at(pos[0], pos[1])
+        time.sleep(1.0)  # wait for UI to fade
 
         # 5. Click screen center to restore keyboard focus to game
         cx, cy = self._screen_center()
         self.click_at(cx, cy)
         time.sleep(0.3)
+        log.info("  Photo mode ready.")
 
     def exit_photo_mode(self) -> None:
         """Two ESC presses: 1st exits first-person/no-UI, 2nd exits photo mode."""
