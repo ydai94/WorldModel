@@ -1,0 +1,7 @@
+mss>=9.0.0
+opencv-python>=4.8.0
+pydirectinput>=1.0.4
+keyboard>=0.13.5
+numpy>=1.24.0
+# Optional: uncomment for OCR support
+# rapidocr-onnxruntime>=1.3.0
