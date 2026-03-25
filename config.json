@@ -22,7 +22,7 @@
     "photo_mode_exit_delay": 1.0,
 
     "probe_interval_sec": 10.0,
-    "probe_ui_recover_sec": 0.3,
+    "probe_ui_recover_sec": 2.0,
 
     "interact_key": "f",
 

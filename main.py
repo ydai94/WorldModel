@@ -739,10 +739,12 @@ class StateMachine:
                               note="probe start",
                               wall_start=wc_start, wall_end=_now_iso())
 
-        # 2. Wait for UI to recover
+        # 2. Wait for game to fully return to normal gameplay
+        log.info("  [probe] Waiting for gameplay UI to settle …")
         time.sleep(self._cfg.probe_ui_recover_sec)
 
         # 3. Screenshot ROI & detect
+        log.info("  [probe] Taking screenshot …")
         roi = self._screen.grab_roi()
         score, tmpl_hit, ocr_text, ocr_hit = self._detector.detect(roi)
         interactable = tmpl_hit or ocr_hit
@@ -766,11 +768,15 @@ class StateMachine:
                           wall_start=_now_iso(), wall_end=_now_iso())
 
         log.info(
-            "Probe @ %.1fs — score=%.3f  interactable=%s",
-            self._elapsed(), score, interactable,
+            "  [probe] score=%.3f  interactable=%s",
+            score, interactable,
         )
 
-        # 4. Re-enter photo mode
+        # 4. Wait before re-entering — give game time to be fully ready
+        log.info("  [probe] Waiting before re-entering photo mode …")
+        time.sleep(1.0)
+
+        # 5. Re-enter photo mode
         t = self._elapsed()
         wc_start = _now_iso()
         self._ctrl.enter_photo_mode()
