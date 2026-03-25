@@ -424,7 +424,10 @@ class GameController:
         self._cfg = config
 
     def tap_key(self, key: str, delay: float = 0.05) -> None:
-        pydirectinput.press(key)
+        """Key press with deliberate hold — press() can be too fast for some games."""
+        pydirectinput.keyDown(key)
+        time.sleep(0.1)
+        pydirectinput.keyUp(key)
         time.sleep(delay)
 
     def key_down(self, key: str) -> None:
@@ -473,43 +476,43 @@ class GameController:
         return cx, cy
 
     def enter_photo_mode(self) -> None:
-        """Multi-step: ESC → click camera → long wait → click flip → click eye → click center."""
+        """Multi-step: ESC → click camera → long wait → click flip → click eye."""
         delay = self._cfg.photo_step_delay
 
         # 1. ESC to open menu
+        log.info("  [enter] Step 1: ESC to open menu")
         self.tap_key("escape")
-        time.sleep(delay)
+        time.sleep(1.5)  # wait for menu animation to complete
 
         # 2. Click camera icon in ESC menu
         pos = self._cfg.photo_esc_menu_camera_pos
-        log.info("  Clicking camera icon at %s …", pos)
+        log.info("  [enter] Step 2: Click camera icon at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(2.0)  # photo mode load animation takes ~1-2s
+        time.sleep(3.0)  # photo mode needs a long time to fully load
 
-        # 3. Click camera-flip icon for first-person view (do this FIRST)
+        # 3. Click camera-flip icon for first-person view
         pos = self._cfg.photo_first_person_pos
-        log.info("  Clicking first-person at %s …", pos)
+        log.info("  [enter] Step 3: Click first-person at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(1.0)  # wait for view transition
+        time.sleep(2.0)  # wait for view transition to complete
 
         # 4. Click eye icon to hide UI
         pos = self._cfg.photo_hide_ui_pos
-        log.info("  Clicking hide-UI at %s …", pos)
+        log.info("  [enter] Step 4: Click hide-UI at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(1.0)  # wait for UI to fade
+        time.sleep(1.5)  # wait for UI to fully fade
 
-        # 5. Move mouse to screen center (NO click — clicking would toggle UI back)
-        cx, cy = self._screen_center()
-        pydirectinput.moveTo(cx, cy)
-        time.sleep(0.3)
-        log.info("  Photo mode ready.")
+        log.info("  [enter] Photo mode ready — first-person no-UI")
 
     def exit_photo_mode(self) -> None:
         """Two ESC presses: 1st exits first-person/no-UI, 2nd exits photo mode."""
+        log.info("  [exit] Step 1: ESC — exit first-person no-UI")
         self.tap_key("escape")
-        time.sleep(self._cfg.photo_step_delay)
+        time.sleep(1.5)  # wait for photo mode UI to fully appear
+
+        log.info("  [exit] Step 2: ESC — exit photo mode to gameplay")
         self.tap_key("escape")
-        time.sleep(self._cfg.photo_mode_exit_delay)
+        time.sleep(1.5)  # wait for game to fully return to normal
 
     def sync_marker(self) -> None:
         """Perform a visible camera shake pattern for OBS video alignment.
