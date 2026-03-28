@@ -19,6 +19,7 @@
     "photo_first_person_pos": [2469, 1577],
     "photo_flip_camera_pos": [2877, 1577],
     "photo_hide_ui_pos": [2673, 1577],
+    "photo_exit_button_pos": [2928, 74],
     "photo_step_delay": 0.8,
     "photo_mode_exit_delay": 1.0,
 

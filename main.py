@@ -99,6 +99,7 @@ class Config:
     photo_first_person_pos: list[int] = field(default_factory=lambda: [2840, 1630])
     photo_flip_camera_pos: list[int] = field(default_factory=lambda: [2740, 1630])
     photo_hide_ui_pos: list[int] = field(default_factory=lambda: [2630, 1630])
+    photo_exit_button_pos: list[int] = field(default_factory=lambda: [2928, 74])
     photo_step_delay: float = 0.8   # wait between each click step
     photo_mode_exit_delay: float = 1.0
 
@@ -511,17 +512,17 @@ class GameController:
         log.info("  [enter] Photo mode ready — first-person no-UI")
 
     def exit_photo_mode(self) -> None:
-        """Two ESC presses: 1st exits first-person/no-UI, 2nd exits photo mode."""
-        log.info("  [exit] Step 1: ESC — exit first-person no-UI")
-        pydirectinput.keyDown("escape")
-        time.sleep(0.3)
-        pydirectinput.keyUp("escape")
-        time.sleep(2.5)
+        """Click exit button in photo mode, then ESC to leave photo mode."""
+        # 1. Click anywhere to show UI (in no-UI mode, a click brings UI back)
+        cx, cy = self._screen_center()
+        log.info("  [exit] Step 1: Click center to show photo UI")
+        self.click_at(cx, cy)
+        time.sleep(1.5)
 
-        log.info("  [exit] Step 2: ESC — exit photo mode to gameplay")
-        pydirectinput.keyDown("escape")
-        time.sleep(0.3)
-        pydirectinput.keyUp("escape")
+        # 2. Click the exit button (X) in photo mode
+        pos = self._cfg.photo_exit_button_pos
+        log.info("  [exit] Step 2: Click exit button at %s", pos)
+        self.click_at(pos[0], pos[1])
         time.sleep(2.5)
 
     def sync_marker(self) -> None:
