@@ -92,12 +92,13 @@ class Config:
     )
 
     # Photo mode — multi-step click sequence
-    # Flow: ESC → click camera icon → click eye (hide UI) → click flip (1st person)
+    # Flow: ESC → camera icon → first person → flip camera → hide UI
     # All positions are SCREEN coordinates (fullscreen = game coordinates).
     # Use  python main.py --calibrate  to find exact positions on your setup.
     photo_esc_menu_camera_pos: list[int] = field(default_factory=lambda: [2900, 980])
-    photo_hide_ui_pos: list[int] = field(default_factory=lambda: [2630, 1630])
     photo_first_person_pos: list[int] = field(default_factory=lambda: [2840, 1630])
+    photo_flip_camera_pos: list[int] = field(default_factory=lambda: [2740, 1630])
+    photo_hide_ui_pos: list[int] = field(default_factory=lambda: [2630, 1630])
     photo_step_delay: float = 0.8   # wait between each click step
     photo_mode_exit_delay: float = 1.0
 
@@ -476,31 +477,36 @@ class GameController:
         return cx, cy
 
     def enter_photo_mode(self) -> None:
-        """Multi-step: ESC → click camera → long wait → click flip → click eye."""
-        delay = self._cfg.photo_step_delay
+        """Multi-step: ESC → camera icon → first person → flip camera → hide UI."""
 
         # 1. ESC to open menu
         log.info("  [enter] Step 1: ESC to open menu")
         self.tap_key("escape")
-        time.sleep(1.5)  # wait for menu animation to complete
+        time.sleep(1.5)
 
         # 2. Click camera icon in ESC menu
         pos = self._cfg.photo_esc_menu_camera_pos
         log.info("  [enter] Step 2: Click camera icon at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(3.0)  # photo mode needs a long time to fully load
+        time.sleep(3.0)
 
-        # 3. Click camera-flip icon for first-person view
+        # 3. Click first-person view
         pos = self._cfg.photo_first_person_pos
         log.info("  [enter] Step 3: Click first-person at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(2.0)  # wait for view transition to complete
+        time.sleep(1.5)
 
-        # 4. Click eye icon to hide UI
-        pos = self._cfg.photo_hide_ui_pos
-        log.info("  [enter] Step 4: Click hide-UI at %s", pos)
+        # 4. Click flip camera (reverse camera)
+        pos = self._cfg.photo_flip_camera_pos
+        log.info("  [enter] Step 4: Click flip-camera at %s", pos)
         self.click_at(pos[0], pos[1])
-        time.sleep(1.5)  # wait for UI to fully fade
+        time.sleep(1.5)
+
+        # 5. Click eye icon to hide UI
+        pos = self._cfg.photo_hide_ui_pos
+        log.info("  [enter] Step 5: Click hide-UI at %s", pos)
+        self.click_at(pos[0], pos[1])
+        time.sleep(1.5)
 
         log.info("  [enter] Photo mode ready — first-person no-UI")
 
