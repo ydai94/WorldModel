@@ -514,11 +514,11 @@ class GameController:
         """Two ESC presses: 1st exits first-person/no-UI, 2nd exits photo mode."""
         log.info("  [exit] Step 1: ESC — exit first-person no-UI")
         self.tap_key("escape")
-        time.sleep(1.5)  # wait for photo mode UI to fully appear
+        time.sleep(2.5)  # wait for photo mode UI transition to fully complete
 
         log.info("  [exit] Step 2: ESC — exit photo mode to gameplay")
         self.tap_key("escape")
-        time.sleep(1.5)  # wait for game to fully return to normal
+        time.sleep(2.5)  # wait for game to fully return to normal
 
     def sync_marker(self) -> None:
         """Perform a visible camera shake pattern for OBS video alignment.
