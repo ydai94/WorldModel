@@ -1,55 +1,23 @@
 {
-    "game_name": "HonkaiStarRail",
-    "duration_sec": 60,
+    "game_name": "Cyberpunk2077",
+    "duration_sec": 600,
     "output_dir": "outputs",
-    "monitor_index": 1,
-
-    "roi_x": 1500,
-    "roi_y": 850,
-    "roi_w": 400,
-    "roi_h": 250,
-
-    "template_paths": ["templates/interact_f_key.png"],
-    "template_threshold": 0.75,
-
-    "enable_ocr": false,
-    "ocr_keywords": ["对话", "交互", "调查", "Talk", "Interact"],
-
-    "photo_esc_menu_camera_pos": [2936, 914],
-    "photo_first_person_pos": [2469, 1577],
-    "photo_flip_camera_pos": [2877, 1577],
-    "photo_hide_ui_pos": [2673, 1577],
-    "photo_exit_button_pos": [2928, 74],
-    "photo_step_delay": 0.8,
-    "photo_mode_exit_delay": 1.0,
-
-    "probe_interval_sec": 10.0,
-    "probe_ui_recover_sec": 2.0,
-
-    "interact_key": "f",
 
     "enable_random_movement": true,
     "min_move_duration_sec": 0.5,
     "max_move_duration_sec": 3.0,
-    "min_turn_duration_sec": 0.3,
-    "max_turn_duration_sec": 1.5,
     "idle_probability": 0.1,
 
     "enable_camera_scan": true,
     "scan_after_every_move": true,
-    "scan_mode": "weighted_random",
-    "scan_candidates": ["right_90", "left_90", "back_180", "hold", "full_360"],
-    "scan_weights": [0.35, 0.20, 0.25, 0.15, 0.05],
+    "scan_candidates": ["right_90", "left_90", "back_180", "look_up", "look_down", "hold"],
+    "scan_weights": [0.25, 0.20, 0.15, 0.15, 0.10, 0.15],
     "scan_duration_sec": 2.0,
     "scan_hold_duration_sec": 1.5,
     "mouse_sensitivity": 5.0,
+    "mouse_sensitivity_y": 3.0,
 
     "hotkey_stop": "F8",
     "hotkey_pause": "F9",
-
-    "countdown_sec": 5,
-
-    "sync_marker_shakes": 3,
-    "sync_marker_dx": 300,
-    "sync_marker_interval": 0.3
+    "countdown_sec": 5
 }
