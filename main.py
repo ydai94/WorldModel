@@ -346,8 +346,9 @@ class StateMachine:
 # ===================================================================
 
 class DataCollector:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, is_first: bool = True) -> None:
         self._cfg = config
+        self._is_first = is_first
         self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._session_dir = pathlib.Path(config.output_dir) / f"session_{self._session_id}"
 
@@ -365,23 +366,26 @@ class DataCollector:
 
         keyboard.add_hotkey(self._cfg.hotkey_stop, sm.request_stop)
         keyboard.add_hotkey(self._cfg.hotkey_pause, sm.toggle_pause)
-        log.info("Hotkeys: %s=stop  %s=pause/resume", self._cfg.hotkey_stop, self._cfg.hotkey_pause)
 
-        log.info("Starting in %d seconds — switch to game!", self._cfg.countdown_sec)
-        for i in range(self._cfg.countdown_sec, 0, -1):
-            log.info("  %d …", i)
-            time.sleep(1)
+        if self._is_first:
+            log.info("Hotkeys: %s=stop  %s=pause/resume", self._cfg.hotkey_stop, self._cfg.hotkey_pause)
+            log.info("Starting in %d seconds — switch to game!", self._cfg.countdown_sec)
+            for i in range(self._cfg.countdown_sec, 0, -1):
+                log.info("  %d …", i)
+                time.sleep(1)
 
         wall_clock_start = _now_iso()
-        log.info("Session started: %s  (make sure OBS is recording)", wall_clock_start)
+        log.info("Session started: %s", wall_clock_start)
 
         try:
             sm.run()
         except KeyboardInterrupt:
             log.info("Ctrl+C — saving partial data.")
+            raise
         except Exception:
             log.exception("Error — saving partial data.")
         finally:
+            keyboard.unhook_all()
             action_log.to_csv(actions_csv)
 
             summary = {
@@ -397,8 +401,6 @@ class DataCollector:
             with open(summary_path, "w", encoding="utf-8") as f:
                 json.dump(summary, f, indent=2, ensure_ascii=False)
             log.info("Summary → %s", summary_path)
-
-            keyboard.unhook_all()
             log.info("Done. Files in: %s", self._session_dir)
 
 
@@ -411,6 +413,8 @@ def main() -> None:
         description="Cyberpunk 2077 — World Model Training Data Collector"
     )
     parser.add_argument("--config", "-c", default="config.json")
+    parser.add_argument("--loops", "-n", type=int, default=0,
+                        help="Number of sessions to run (0 = infinite, default: 0)")
     args = parser.parse_args()
 
     if not _IS_WINDOWS:
@@ -418,8 +422,19 @@ def main() -> None:
         sys.exit(1)
 
     cfg = Config.from_json(args.config)
-    log.info("Game: %s | Duration: %ds", cfg.game_name, int(cfg.duration_sec))
-    DataCollector(cfg).run()
+
+    loop_num = 0
+    try:
+        while True:
+            loop_num += 1
+            if args.loops > 0 and loop_num > args.loops:
+                break
+            log.info("=== Session %d (duration: %ds) ===", loop_num, int(cfg.duration_sec))
+            DataCollector(cfg, is_first=(loop_num == 1)).run()
+            log.info("Session %d complete. Starting next in 3 seconds …", loop_num)
+            time.sleep(3)
+    except KeyboardInterrupt:
+        log.info("Stopped after %d sessions.", loop_num)
 
 
 if __name__ == "__main__":
