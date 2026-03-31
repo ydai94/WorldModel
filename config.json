@@ -10,12 +10,12 @@
 
     "enable_camera_scan": true,
     "scan_after_every_move": true,
-    "scan_candidates": ["right_90", "left_90", "back_180", "look_up", "look_down", "hold"],
-    "scan_weights": [0.25, 0.20, 0.15, 0.15, 0.10, 0.15],
+    "scan_candidates": ["right_90", "left_90", "look_up", "look_down", "hold"],
+    "scan_weights": [0.20, 0.20, 0.20, 0.20, 0.20],
     "scan_duration_sec": 2.0,
     "scan_hold_duration_sec": 1.5,
     "mouse_sensitivity": 10.0,
-    "mouse_sensitivity_y": 6.0,
+    "mouse_sensitivity_y": 10.0,
 
     "hotkey_stop": "F8",
     "hotkey_pause": "F9",
