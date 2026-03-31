@@ -15,9 +15,23 @@ It will:
 import argparse
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 from datetime import datetime
+
+
+def get_ffmpeg_path() -> str:
+    """Find ffmpeg: try system PATH first, then imageio_ffmpeg."""
+    path = shutil.which("ffmpeg")
+    if path:
+        return path
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        pass
+    return "ffmpeg"  # fallback, will fail if not in PATH
 
 
 def parse_obs_start(video_path: str) -> datetime:
@@ -51,6 +65,10 @@ def main():
     parser.add_argument("--crf", type=int, default=18, help="FFmpeg CRF quality (default: 18, lower=better)")
     parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
     args = parser.parse_args()
+
+    # Find ffmpeg
+    ffmpeg_bin = get_ffmpeg_path()
+    print(f"Using ffmpeg: {ffmpeg_bin}")
 
     # Parse OBS start time
     try:
@@ -112,7 +130,7 @@ def main():
         # -ss before -i for fast seeking
         # scale=-2:720 keeps aspect ratio, ensures even width
         cmd = [
-            "ffmpeg", "-y",
+            ffmpeg_bin, "-y",
             "-ss", start_hms,
             "-i", args.video,
             "-t", dur_hms,
