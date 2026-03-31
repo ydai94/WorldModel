@@ -319,17 +319,17 @@ class StateMachine:
                               wc_start=wc_start, wc_end=_now_iso())
 
         elif chosen == "look_up":
-            dy = int(-45 * sens_y)
+            dy = int(-30 * sens_y)
             self._ctrl.smooth_mouse_move(0, dy, dur)
             self._actions.log("camera_look_up", t_start, self._elapsed(),
-                              {"direction": "up", "angle": 45, "dy": dy},
+                              {"direction": "up", "angle": 30, "dy": dy},
                               wc_start=wc_start, wc_end=_now_iso())
 
         elif chosen == "look_down":
-            dy = int(45 * sens_y)
+            dy = int(30 * sens_y)
             self._ctrl.smooth_mouse_move(0, dy, dur)
             self._actions.log("camera_look_down", t_start, self._elapsed(),
-                              {"direction": "down", "angle": 45, "dy": dy},
+                              {"direction": "down", "angle": 30, "dy": dy},
                               wc_start=wc_start, wc_end=_now_iso())
 
         elif chosen == "hold":

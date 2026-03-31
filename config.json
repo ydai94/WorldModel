@@ -14,8 +14,8 @@
     "scan_weights": [0.25, 0.20, 0.15, 0.15, 0.10, 0.15],
     "scan_duration_sec": 2.0,
     "scan_hold_duration_sec": 1.5,
-    "mouse_sensitivity": 5.0,
-    "mouse_sensitivity_y": 3.0,
+    "mouse_sensitivity": 10.0,
+    "mouse_sensitivity_y": 6.0,
 
     "hotkey_stop": "F8",
     "hotkey_pause": "F9",
