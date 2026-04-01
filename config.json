@@ -1,6 +1,6 @@
 {
     "game_name": "Cyberpunk2077",
-    "duration_sec": 600,
+    "duration_sec": 60,
     "output_dir": "outputs",
 
     "enable_random_movement": true,
@@ -9,9 +9,9 @@
     "idle_probability": 0.1,
 
     "enable_camera_scan": true,
-    "scan_after_every_move": true,
     "scan_candidates": ["right_90", "left_90", "look_up", "look_down", "hold"],
     "scan_weights": [0.20, 0.20, 0.20, 0.20, 0.20],
+    "concurrent_probability": 0.5,
     "scan_duration_sec": 2.0,
     "scan_hold_duration_sec": 1.5,
     "mouse_sensitivity": 10.0,
