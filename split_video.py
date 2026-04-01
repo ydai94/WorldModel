@@ -114,8 +114,12 @@ def main():
             print(f"  [{session_id}] Skipping — session starts before OBS recording")
             continue
 
-        # Output path
+        # Output path — skip if already exists
         out_path = session_dir / f"session_{session_id}_720p.mp4"
+        if out_path.exists():
+            size_mb = out_path.stat().st_size / (1024 * 1024)
+            print(f"  [{session_id}] Skipping — already exists ({size_mb:.1f} MB)")
+            continue
 
         # Format timestamps for ffmpeg
         start_hms = f"{int(video_start // 3600):02d}:{int(video_start % 3600 // 60):02d}:{video_start % 60:06.3f}"
