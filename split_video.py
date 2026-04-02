@@ -131,12 +131,12 @@ def main():
         print(f"    Output: {out_path}")
 
         # FFmpeg command
-        # -ss before -i for fast seeking
+        # -ss after -i for frame-accurate seeking
         # scale=-2:720 keeps aspect ratio, ensures even width
         cmd = [
             ffmpeg_bin, "-y",
-            "-ss", start_hms,
             "-i", args.video,
+            "-ss", start_hms,
             "-t", dur_hms,
             "-vf", f"scale=-2:{args.height}",
             "-c:v", "libx264",

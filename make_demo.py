@@ -23,6 +23,24 @@ def load_events(csv_path: str) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def load_interactions(csv_path: str) -> list[dict]:
+    """Load interactions.csv if it exists."""
+    p = pathlib.Path(csv_path)
+    if not p.exists():
+        return []
+    with open(p, "r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    return [{"start": float(r["start_sec"]), "end": float(r["end_sec"])} for r in rows]
+
+
+def is_interaction_active(interactions: list[dict], t: float) -> bool:
+    """Check if time t falls within any interaction window."""
+    for iv in interactions:
+        if iv["start"] <= t <= iv["end"]:
+            return True
+    return False
+
+
 def load_summary(json_path: str) -> dict:
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -54,8 +72,9 @@ def get_state_at_time(events: list[dict], t: float) -> dict:
 
 
 def draw_overlay(frame: np.ndarray, state: dict, t: float,
-                 font_scale: float = 1.0) -> np.ndarray:
-    """Draw WASD state + camera info on frame."""
+                 font_scale: float = 1.0,
+                 interact: bool = False) -> np.ndarray:
+    """Draw WASD state + camera info + interaction status on frame."""
     h, w = frame.shape[:2]
 
     # Semi-transparent black bar at bottom
@@ -89,9 +108,22 @@ def draw_overlay(frame: np.ndarray, state: dict, t: float,
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2,
                 cv2.LINE_AA)
 
-    # Draw camera — large
+    # Draw camera
     cv2.putText(frame, cam_text, (20, h - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (150, 200, 255), 2,
+                cv2.LINE_AA)
+
+    # Interaction status — center bottom
+    if interact:
+        f_text = "F: YES"
+        f_color = (0, 255, 128)  # green
+    else:
+        f_text = "F: --"
+        f_color = (120, 120, 120)  # gray
+    f_size = cv2.getTextSize(f_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, 2)[0]
+    fx = (w - f_size[0]) // 2
+    cv2.putText(frame, f_text, (fx, h - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, f_color, 2,
                 cv2.LINE_AA)
 
     # Timestamp — right side
@@ -128,8 +160,7 @@ def _auto_detect_offset(video_path: str, events: list[dict],
             continue
 
     if obs_start is None:
-        print(f"Warning: cannot parse OBS start time from '{video_name}'")
-        print("Use --sync-offset to manually specify")
+        print(f"Session video detected (no OBS timestamp in filename) — using offset=0")
         return 0.0
 
     first_wc = events[0]["wall_clock"]
@@ -151,7 +182,7 @@ def main():
     parser.add_argument("--session", "-s", required=True, help="Session directory")
     parser.add_argument("--sync-offset", type=float, default=None)
     parser.add_argument("--start", type=float, default=0)
-    parser.add_argument("--duration", type=float, default=60)
+    parser.add_argument("--duration", type=float, default=0, help="Duration in seconds (0 = full session)")
     parser.add_argument("--output", "-o", default=None)
     parser.add_argument("--scale", type=float, default=1.0)
     args = parser.parse_args()
@@ -171,6 +202,15 @@ def main():
     summary = load_summary(str(json_files[0]))
     print(f"Loaded {len(events)} events from {csv_files[0].name}")
 
+    # Load interactions if available
+    interact_files = list(session_dir.glob("*_interactions.csv"))
+    interactions = []
+    if interact_files:
+        interactions = load_interactions(str(interact_files[0]))
+        print(f"Loaded {len(interactions)} interaction events from {interact_files[0].name}")
+    else:
+        print("No interactions.csv found — interaction overlay disabled")
+
     video_offset = _auto_detect_offset(args.video, events, args.sync_offset)
     print(f"Video offset: {video_offset:.1f}s")
 
@@ -186,12 +226,17 @@ def main():
     print(f"Video: {video_w}x{video_h} @ {video_fps:.1f}fps, {total_frames / video_fps:.1f}s")
 
     clip_start_video = args.start + video_offset
-    clip_end_video = args.start + args.duration + video_offset
+    if args.duration <= 0:
+        end_frame = total_frames
+        clip_end_sec = total_frames / video_fps - video_offset
+    else:
+        clip_end_video = args.start + args.duration + video_offset
+        end_frame = min(total_frames, int(clip_end_video * video_fps))
+        clip_end_sec = args.start + args.duration
 
     start_frame = max(0, int(clip_start_video * video_fps))
-    end_frame = min(total_frames, int(clip_end_video * video_fps))
 
-    print(f"Cutting: session {args.start:.1f}s–{args.start + args.duration:.1f}s "
+    print(f"Cutting: session {args.start:.1f}s–{clip_end_sec:.1f}s "
           f"→ frames {start_frame}–{end_frame}")
 
     out_w = int(video_w * args.scale)
@@ -229,15 +274,22 @@ def main():
             frame = cv2.resize(frame, (out_w, out_h))
 
         fs = 1.0 * args.scale if args.scale < 1.0 else 1.0
-        frame = draw_overlay(frame, state, session_t, font_scale=max(0.5, fs))
+        interact = is_interaction_active(interactions, session_t)
+        frame = draw_overlay(frame, state, session_t, font_scale=max(0.5, fs),
+                             interact=interact)
 
         writer.write(frame)
         frame_num += 1
         processed += 1
 
-        if processed % 300 == 0:
-            print(f"  {processed}/{total_to_process} ({processed / total_to_process * 100:.0f}%)")
+        if processed % 30 == 0 or processed == total_to_process:
+            pct = processed / total_to_process
+            bar_len = 40
+            filled = int(bar_len * pct)
+            bar = "=" * filled + "-" * (bar_len - filled)
+            print(f"\r  [{bar}] {pct * 100:.0f}% ({processed}/{total_to_process})", end="", flush=True)
 
+    print()
     cap.release()
     writer.release()
     print(f"Done! {out_path} — {processed} frames, {processed / video_fps:.1f}s")
