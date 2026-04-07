@@ -22,7 +22,11 @@ from datetime import datetime
 
 
 def get_ffmpeg_path() -> str:
-    """Find ffmpeg: try system PATH first, then imageio_ffmpeg."""
+    """Find ffmpeg: Mac uses conda/system PATH, Windows uses fixed path."""
+    if sys.platform == "win32":
+        win_path = r"C:\ffmpeg\bin\ffmpeg.exe"
+        if pathlib.Path(win_path).exists():
+            return win_path
     path = shutil.which("ffmpeg")
     if path:
         return path
@@ -31,7 +35,7 @@ def get_ffmpeg_path() -> str:
         return imageio_ffmpeg.get_ffmpeg_exe()
     except ImportError:
         pass
-    return "ffmpeg"  # fallback, will fail if not in PATH
+    return "ffmpeg"
 
 
 def parse_obs_start(video_path: str) -> datetime:
@@ -60,10 +64,15 @@ def find_sessions(sessions_dir: str) -> list[pathlib.Path]:
 def main():
     parser = argparse.ArgumentParser(description="Split OBS video into per-session 720p segments")
     parser.add_argument("--video", "-v", required=True, help="Path to OBS video file")
-    parser.add_argument("--sessions", "-s", default="outputs", help="Directory containing session_* folders")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--sessions", "-s", default="outputs", help="Directory containing session_* folders")
+    group.add_argument("--session", default=None, help="Single session directory")
     parser.add_argument("--height", type=int, default=720, help="Output height in pixels (default: 720)")
     parser.add_argument("--crf", type=int, default=18, help="FFmpeg CRF quality (default: 18, lower=better)")
     parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing 720p files")
+    parser.add_argument("--obs-delay", type=float, default=1.0,
+                        help="OBS startup delay in seconds (time between filename timestamp and actual first frame, default: 1.0)")
     args = parser.parse_args()
 
     # Find ffmpeg
@@ -79,9 +88,17 @@ def main():
     print(f"OBS recording start: {obs_start.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Find sessions
-    sessions = find_sessions(args.sessions)
+    if args.session:
+        p = pathlib.Path(args.session)
+        if any(p.glob("*_summary.json")):
+            sessions = [p]
+        else:
+            print(f"No summary.json found in {args.session}")
+            sys.exit(1)
+    else:
+        sessions = find_sessions(args.sessions)
     if not sessions:
-        print(f"No sessions found in {args.sessions}")
+        print(f"No sessions found")
         sys.exit(1)
     print(f"Found {len(sessions)} session(s)")
 
@@ -107,7 +124,7 @@ def main():
         start_epoch = parse_wall_clock(wc_start).timestamp()
         end_epoch = parse_wall_clock(wc_end).timestamp()
 
-        video_start = start_epoch - obs_epoch
+        video_start = start_epoch - obs_epoch - args.obs_delay
         video_duration = end_epoch - start_epoch
 
         if video_start < 0:
@@ -116,7 +133,7 @@ def main():
 
         # Output path — skip if already exists
         out_path = session_dir / f"session_{session_id}_720p.mp4"
-        if out_path.exists():
+        if out_path.exists() and not args.force:
             size_mb = out_path.stat().st_size / (1024 * 1024)
             print(f"  [{session_id}] Skipping — already exists ({size_mb:.1f} MB)")
             continue
@@ -131,14 +148,20 @@ def main():
         print(f"    Output: {out_path}")
 
         # FFmpeg command
-        # -ss after -i for frame-accurate seeking
-        # scale=-2:720 keeps aspect ratio, ensures even width
+        # -ss before -i for fast keyframe seek, -ss after -i for precise trim
+        # This avoids decoding from beginning (hours of data) while staying accurate
+        safe_seek = max(0, video_start - 30)  # seek to 30s before target
+        fine_offset = video_start - safe_seek  # precise trim within decoded window
+        safe_hms = f"{int(safe_seek // 3600):02d}:{int(safe_seek % 3600 // 60):02d}:{safe_seek % 60:06.3f}"
+        fine_hms = f"{int(fine_offset // 3600):02d}:{int(fine_offset % 3600 // 60):02d}:{fine_offset % 60:06.3f}"
         cmd = [
             ffmpeg_bin, "-y",
+            "-ss", safe_hms,
             "-i", args.video,
-            "-ss", start_hms,
+            "-ss", fine_hms,
             "-t", dur_hms,
             "-vf", f"scale=-2:{args.height}",
+            "-vsync", "cfr",
             "-c:v", "libx264",
             "-crf", str(args.crf),
             "-c:a", "aac",
@@ -152,13 +175,33 @@ def main():
             print("    (dry run — skipped)")
             continue
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            # Get output file size
+        # Run ffmpeg with progress bar
+        cmd_with_progress = cmd[:-1] + ["-progress", "pipe:1", str(out_path)]
+        proc = subprocess.Popen(cmd_with_progress, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+        bar_len = 40
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            if line.startswith("out_time_us="):
+                try:
+                    us = int(line.split("=")[1].strip())
+                    elapsed_sec = us / 1_000_000
+                    pct = min(elapsed_sec / video_duration, 1.0)
+                    filled = int(bar_len * pct)
+                    bar = "=" * filled + "-" * (bar_len - filled)
+                    print(f"\r    [{bar}] {pct * 100:.0f}%", end="", flush=True)
+                except ValueError:
+                    pass
+        proc.wait()
+        print()  # newline after progress bar
+        if proc.returncode == 0:
             size_mb = out_path.stat().st_size / (1024 * 1024)
             print(f"    Done — {size_mb:.1f} MB")
         else:
-            print(f"    FAILED: {result.stderr[-200:]}")
+            err = proc.stderr.read()
+            print(f"    FAILED: {err[-200:]}")
 
     print("\nAll done.")
 

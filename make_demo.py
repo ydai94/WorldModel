@@ -176,77 +176,60 @@ def _auto_detect_offset(video_path: str, events: list[dict],
     return offset
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Make demo video with event overlays")
-    parser.add_argument("--video", "-v", required=True, help="OBS video file")
-    parser.add_argument("--session", "-s", required=True, help="Session directory")
-    parser.add_argument("--sync-offset", type=float, default=None)
-    parser.add_argument("--start", type=float, default=0)
-    parser.add_argument("--duration", type=float, default=0, help="Duration in seconds (0 = full session)")
-    parser.add_argument("--output", "-o", default=None)
-    parser.add_argument("--scale", type=float, default=1.0)
-    args = parser.parse_args()
-
-    session_dir = pathlib.Path(args.session)
-
-    # Find events CSV (try events first, fallback to actions for old format)
+def process_one_session(video_path: str, session_dir: pathlib.Path,
+                        sync_offset: float | None, start: float,
+                        duration: float, output: str | None,
+                        scale: float, delay: float = 0.0) -> None:
+    """Process a single session and generate demo video."""
     csv_files = list(session_dir.glob("*_events.csv"))
     if not csv_files:
         csv_files = list(session_dir.glob("*_actions.csv"))
     json_files = list(session_dir.glob("*_summary.json"))
     if not csv_files or not json_files:
-        print(f"Error: no events/actions csv or summary.json in {session_dir}")
-        sys.exit(1)
+        print(f"  Error: no events/actions csv or summary.json in {session_dir}")
+        return
 
     events = load_events(str(csv_files[0]))
     summary = load_summary(str(json_files[0]))
-    print(f"Loaded {len(events)} events from {csv_files[0].name}")
+    print(f"  Loaded {len(events)} events from {csv_files[0].name}")
 
-    # Load interactions if available
     interact_files = list(session_dir.glob("*_interactions.csv"))
     interactions = []
     if interact_files:
         interactions = load_interactions(str(interact_files[0]))
-        print(f"Loaded {len(interactions)} interaction events from {interact_files[0].name}")
-    else:
-        print("No interactions.csv found — interaction overlay disabled")
+        print(f"  Loaded {len(interactions)} interaction events from {interact_files[0].name}")
 
-    video_offset = _auto_detect_offset(args.video, events, args.sync_offset)
-    print(f"Video offset: {video_offset:.1f}s")
+    video_offset = _auto_detect_offset(video_path, events, sync_offset)
 
-    cap = cv2.VideoCapture(args.video)
+    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"Error: cannot open video {args.video}")
-        sys.exit(1)
+        print(f"  Error: cannot open video {video_path}")
+        return
 
     video_fps = cap.get(cv2.CAP_PROP_FPS)
     video_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     video_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"Video: {video_w}x{video_h} @ {video_fps:.1f}fps, {total_frames / video_fps:.1f}s")
 
-    clip_start_video = args.start + video_offset
-    if args.duration <= 0:
-        end_frame = total_frames
-        clip_end_sec = total_frames / video_fps - video_offset
-    else:
-        clip_end_video = args.start + args.duration + video_offset
+    clip_start_video = start + video_offset
+    if duration <= 0:
+        session_duration = float(events[-1]["timestamp_sec"])
+        clip_end_video = start + session_duration + video_offset
         end_frame = min(total_frames, int(clip_end_video * video_fps))
-        clip_end_sec = args.start + args.duration
+        clip_end_sec = start + session_duration
+    else:
+        clip_end_video = start + duration + video_offset
+        end_frame = min(total_frames, int(clip_end_video * video_fps))
+        clip_end_sec = start + duration
 
     start_frame = max(0, int(clip_start_video * video_fps))
 
-    print(f"Cutting: session {args.start:.1f}s–{clip_end_sec:.1f}s "
-          f"→ frames {start_frame}–{end_frame}")
-
-    out_w = int(video_w * args.scale)
-    out_h = int(video_h * args.scale)
-
-    # Make output width even (required by some codecs)
+    out_w = int(video_w * scale)
+    out_h = int(video_h * scale)
     out_w = out_w if out_w % 2 == 0 else out_w + 1
     out_h = out_h if out_h % 2 == 0 else out_h + 1
 
-    out_path = args.output or f"demo_{summary.get('session_id', 'output')}.mp4"
+    out_path = output or f"demo_{summary.get('session_id', 'output')}.mp4"
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(out_path, fourcc, video_fps, (out_w, out_h))
@@ -255,7 +238,7 @@ def main():
         fourcc = cv2.VideoWriter_fourcc(*"MJPG")
         writer = cv2.VideoWriter(out_path, fourcc, video_fps, (out_w, out_h))
 
-    print(f"Output: {out_path} ({out_w}x{out_h})")
+    print(f"  Output: {out_path} ({out_w}x{out_h}, {start:.0f}s–{clip_end_sec:.0f}s)")
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     frame_num = start_frame
@@ -267,13 +250,13 @@ def main():
         if not ret:
             break
 
-        session_t = frame_num / video_fps - video_offset
+        session_t = frame_num / video_fps - video_offset + delay
         state = get_state_at_time(events, session_t)
 
-        if args.scale != 1.0:
+        if scale != 1.0:
             frame = cv2.resize(frame, (out_w, out_h))
 
-        fs = 1.0 * args.scale if args.scale < 1.0 else 1.0
+        fs = 1.0 * scale if scale < 1.0 else 1.0
         interact = is_interaction_active(interactions, session_t)
         frame = draw_overlay(frame, state, session_t, font_scale=max(0.5, fs),
                              interact=interact)
@@ -292,7 +275,71 @@ def main():
     print()
     cap.release()
     writer.release()
-    print(f"Done! {out_path} — {processed} frames, {processed / video_fps:.1f}s")
+    print(f"  Done! {out_path} — {processed} frames, {processed / video_fps:.1f}s\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Make demo video with event overlays")
+    parser.add_argument("--video", "-v", default=None, help="OBS video file (optional for batch mode if 720p exists in each session)")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--session", "-s", default=None, help="Single session directory")
+    group.add_argument("--sessions", default=None, help="Directory containing session_* folders (batch mode)")
+    parser.add_argument("--sync-offset", type=float, default=None)
+    parser.add_argument("--start", type=float, default=0)
+    parser.add_argument("--duration", type=float, default=0, help="Duration in seconds (0 = full session)")
+    parser.add_argument("--output", "-o", default=None)
+    parser.add_argument("--scale", type=float, default=1.0)
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="Shift events by N seconds (negative = events earlier, try -0.3 to -1.0)")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing demo files")
+    args = parser.parse_args()
+
+    if args.session:
+        # Single session mode
+        session_dir = pathlib.Path(args.session)
+        video = args.video
+        if not video:
+            vids = list(session_dir.glob("*_720p.mp4"))
+            if not vids:
+                print(f"Error: no --video specified and no 720p video in {session_dir}")
+                sys.exit(1)
+            video = str(vids[0])
+        process_one_session(video, session_dir,
+                            args.sync_offset, args.start, args.duration,
+                            args.output, args.scale, delay=args.delay)
+    else:
+        # Batch mode
+        base = pathlib.Path(args.sessions)
+        session_dirs = sorted(base.glob("session_*/"))
+        session_dirs = [s for s in session_dirs if any(s.glob("*_events.csv"))]
+
+        if not session_dirs:
+            print(f"No sessions found in {base}")
+            sys.exit(1)
+
+        print(f"Found {len(session_dirs)} sessions\n")
+
+        for session_dir in session_dirs:
+            # Find video: use --video if provided, otherwise 720p in session dir
+            video = args.video
+            if not video:
+                vids = list(session_dir.glob("*_720p.mp4"))
+                if not vids:
+                    print(f"[{session_dir.name}] Skipping — no 720p video found")
+                    continue
+                video = str(vids[0])
+
+            out_path = f"demo_{session_dir.name.replace('session_', '')}.mp4"
+            if pathlib.Path(out_path).exists() and not args.force:
+                print(f"[{session_dir.name}] Skipping — {out_path} already exists")
+                continue
+
+            print(f"[{session_dir.name}]")
+            process_one_session(video, session_dir,
+                                args.sync_offset, args.start, args.duration,
+                                out_path, args.scale)
+
+        print("All done.")
 
 
 if __name__ == "__main__":
